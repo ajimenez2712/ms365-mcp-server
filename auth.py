@@ -33,11 +33,13 @@ def _save_cache(cache: msal.SerializableTokenCache) -> None:
             f.write(cache.serialize())
 
 
-def get_access_token(client_id: str, tenant_id: str) -> str:
+def get_access_token(client_id: str, tenant_id: str) -> dict:
     """
     Acquire a valid Microsoft Graph access token.
     On first run, opens a browser for interactive login.
     Subsequent runs use the cached refresh token silently.
+
+    Returns a dict with 'access_token' and 'expires_in' (seconds).
     """
     cache = _load_cache()
     authority = f"https://login.microsoftonline.com/{tenant_id}"
@@ -54,7 +56,7 @@ def get_access_token(client_id: str, tenant_id: str) -> str:
         result = app.acquire_token_silent(SCOPES, account=accounts[0])
         if result and "access_token" in result:
             _save_cache(cache)
-            return result["access_token"]
+            return result
 
     # Fall back to interactive login (opens browser)
     print("No cached token found. Opening browser for Microsoft login...", file=sys.stderr)
@@ -68,4 +70,4 @@ def get_access_token(client_id: str, tenant_id: str) -> str:
         raise RuntimeError(f"Failed to acquire token: {error}")
 
     _save_cache(cache)
-    return result["access_token"]
+    return result

@@ -5,6 +5,7 @@ Provides email (Outlook) and calendar tools via Microsoft Graph API.
 
 import os
 import sys
+import time
 from typing import Optional, List
 
 from dotenv import load_dotenv
@@ -27,16 +28,21 @@ if not MS_CLIENT_ID or not MS_TENANT_ID:
     sys.exit(1)
 
 
-# ── Global token storage ──────────────────────────────────────────
+# ── Token management ──────────────────────────────────────────────
 
 _access_token: Optional[str] = None
+_token_expiry: float = 0.0
+_REFRESH_BUFFER_SECS = 300  # refresh 5 minutes before expiry
 
 
 def _get_token() -> str:
-    """Get or refresh the access token."""
-    global _access_token
-    if not _access_token:
-        _access_token = auth.get_access_token(MS_CLIENT_ID, MS_TENANT_ID)
+    """Get a valid access token, refreshing automatically when close to expiry."""
+    global _access_token, _token_expiry
+    if _access_token and time.time() < _token_expiry:
+        return _access_token
+    result = auth.get_access_token(MS_CLIENT_ID, MS_TENANT_ID)
+    _access_token = result["access_token"]
+    _token_expiry = time.time() + result.get("expires_in", 3600) - _REFRESH_BUFFER_SECS
     return _access_token
 
 
@@ -49,7 +55,9 @@ def _handle_error(e: Exception) -> str:
     if isinstance(e, _httpx.HTTPStatusError):
         status = e.response.status_code
         if status == 401:
-            return "Error: Authentication expired. Please restart the MCP server to re-authenticate."
+            global _token_expiry
+            _token_expiry = 0.0  # force refresh on next call
+            return "Error: Authentication expired. The token will be refreshed on the next request."
         if status == 403:
             return "Error: Permission denied. Check the app's API permissions in Azure AD."
         if status == 404:
